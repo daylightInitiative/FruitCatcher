@@ -59,7 +59,6 @@ end
 
 
 -- static functions
--- Static function
 function Event.waitUntil(eventObject, eventName)
     local co = coroutine.running()
     -- get the current thread and error if its not inside a coroutine

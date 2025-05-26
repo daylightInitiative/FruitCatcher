@@ -18,6 +18,8 @@ local basket_speed = 400
 local fruit_speed = 70
 local points = 0
 
+local level_counter = 1
+
 local spread_range = {X = {-200, 200}, Y = {-100, 100}}
 
 local SCREEN_WIDTH = love.graphics.getWidth()
@@ -126,19 +128,42 @@ function gameLevelLogic()
 				
 
 			-- end)
-	while true do
-        print("Waiting for LevelCompleted event...")
-        event.waitUntil(EventObj, "LevelCompleted")
-        print("Event fired, coroutine resumed!")
 
-		--levelCompleteTimerStarted = false
+		-- while true do
+			
+			
+		-- 	-- level complete should trigger resume
+
+		-- 	--[[
+		-- 	level_counter = level_counter + 1
+		-- 		levelCompleteTimerStarted = false
+		-- 	]]
+		-- end
+
+		while true do
+			print("Waiting for LevelCompleted event...")
+			event.waitUntil(EventObj, "LevelCompleted" .. tostring(level_counter))
+			print("Event LevelCompleted fired, coroutine resumed!" .. " index: " .. level_counter)
+
+			-- after we hit 0 fruit set the next level steps fruit amt
+			numOfFruit = 10
+			create_fruit(numOfFruit, fruitImages, imageFileNames)
+
+			-- increment our level counter
+			level_counter = level_counter + 1
+			-- enable the switch for next time 
+			levelCompleteTimerStarted = false
+		end
 
 
-        numOfFruit = 10
-        create_fruit(numOfFruit, fruitImages, imageFileNames)
+        -- numOfFruit = 10
+        -- create_fruit(numOfFruit, fruitImages, imageFileNames)
 
-        --levelCompleteTimerStarted = false
-    end
+		-- event.waitUntil(EventObj, "LevelCompleted")
+
+        -- levelCompleteTimerStarted = false
+
+		-- print("Doing next")
 end
 
 function love.load()
@@ -231,6 +256,14 @@ end
 function love.update(dt)
 	if PAUSED then return end
 
+	-- so the issue is fruit is zero
+	-- and we can
+
+
+	if numOfFruit == 0 then
+		--print("Fruit is 0!!!")
+	end
+
 	if numOfFruit == 0 and not levelCompleteTimerStarted then
 		levelCompleteTimerStarted = true
 		register_timer(3, function()
@@ -239,7 +272,7 @@ function love.update(dt)
 			newLevelArrowEffect()
 			print("we have passed the effect")
 
-			EventObj:Fire("LevelCompleted")
+			EventObj:Fire("LevelCompleted" .. tostring(level_counter))
 		end)
 	end
 
