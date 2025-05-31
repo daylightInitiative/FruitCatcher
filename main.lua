@@ -1,8 +1,11 @@
+local string = require("string")
 local math = require("math")
 local os = require("os")
 
 local event = require("event") -- our custom event handler
 local EventObj = event:New()
+
+local levels = require("levels")
 
 -- randomize our math function
 math.randomseed(os.time())
@@ -10,7 +13,6 @@ math.randomseed(os.time())
 local fruits = {}
 local fruitImages = nil
 
---io.stdout:setvbuf("no")
 local pos = {x = 300, y = 490}
 local arrow_image = nil
 local move = {left = false, right = false}
@@ -19,6 +21,7 @@ local fruit_speed = 70
 local points = 0
 
 local level_counter = 1
+local level_num = 1
 
 local spread_range = {X = {-200, 200}, Y = {-100, 100}}
 
@@ -55,6 +58,10 @@ function table_find(t, value)
     return nil
 end
 
+function math_clamp(_in, low, high)
+	return math.min(math.max( _in, low ), high)
+end
+
 function checkCollision(x1,y1,w1,h1, x2,y2,w2,h2)
     return x1 < x2 + w2 and
            x2 < x1 + w1 and
@@ -66,18 +73,20 @@ function create_fruit(amount, fruitImages, imageFileNames)
 	local sprX = spread_range.X
 	local sprY = spread_range.Y
 
+	math.randomseed(os.time())
 	for i = 1, amount do
         local randomIndex = math.random(1, #imageFileNames)
         local chosenFilename = imageFileNames[randomIndex]
 
-        local randomPos = {
-            randX = math.random(50, 500) + math.random(sprX[1], sprX[2]),
-            randY = math.random(5, 250) + math.random(sprY[1], sprY[2]),
-        }
+		-- to solve the issue of fruit spawning off screen
+		-- clamping would bias the fruit to cluster together
+
+        local randX = math.random(SCREEN_WIDTH * 0.1, SCREEN_WIDTH * 0.6)
+        local randY = math.random(SCREEN_HEIGHT * 0.2, SCREEN_HEIGHT * 0.3)
 
         local fruitObject = {
             Texture = fruitImages[chosenFilename], 
-            Position = {X = randomPos.randX, Y = randomPos.randY},
+            Position = {X = randX, Y = randY},
 			Size = {X = 0, Y = 0},
             IsMoving = true
         }
@@ -108,51 +117,49 @@ function register_timer(delay, callback, repeats, ...)
     })
 end
 
+local glitchEffectStarted = false
+
+function load_map()
+
+end
+
 function gameLevelLogic()
-	-- lets start level 2
-			-- numOfFruit = 10
-			-- create_fruit(numOfFruit, fruitImages, imageFileNames)
-
-			-- register_timer(3, function()
-
-			-- 	numOfFruit = 10
-			-- 	create_fruit(numOfFruit, fruitImages, imageFileNames)
-				
-
-			-- end)
-
-			-- register_timer(3, function()
-
-			-- 	numOfFruit = 10
-			-- 	create_fruit(numOfFruit, fruitImages, imageFileNames)
-				
-
-			-- end)
-
-		-- while true do
-			
-			
-		-- 	-- level complete should trigger resume
-
-		-- 	--[[
-		-- 	level_counter = level_counter + 1
-		-- 		levelCompleteTimerStarted = false
-		-- 	]]
-		-- end
 
 		while true do
 			print("Waiting for LevelCompleted event...")
-			event.waitUntil(EventObj, "LevelCompleted" .. tostring(level_counter))
+			event.waitUntil(EventObj, "LevelCompleted" .. tostring(level_num) .. ":" .. tostring(level_counter))
 			print("Event LevelCompleted fired, coroutine resumed!" .. " index: " .. level_counter)
 
-			-- after we hit 0 fruit set the next level steps fruit amt
-			numOfFruit = 10
-			create_fruit(numOfFruit, fruitImages, imageFileNames)
+			local currentLevel = levels[level_num]
+			-- if the level_counter is equal to the max increment the level_num
+			if #currentLevel == level_counter then
+				level_num = level_num + 1
+				level_counter = 1
+				currentLevel = levels[level_num]
+				--load_map()
+				background_image = love.graphics.newImage(levels.levelBackgrounds[level_num])
+			end
 
 			-- increment our level counter
 			level_counter = level_counter + 1
+
+			-- after we hit 0 fruit set the next level steps fruit amt
+			print(string.format("current world: %d\ncurrent level:  %d\nnumOfFruit: %d\n", level_num, level_counter, currentLevel[level_counter]))
+			
+			numOfFruit = currentLevel[level_counter]
+			create_fruit(numOfFruit, fruitImages, imageFileNames)
+
+			local worldName = levels.levelNames[level_num]
+			love.window.setTitle(tostring(SCREEN_WIDTH) .. "x" .. tostring(SCREEN_HEIGHT) .. string.format(" world %d:%d world_name %s", level_num, level_counter, worldName))
+
 			-- enable the switch for next time 
 			levelCompleteTimerStarted = false
+
+			if glitchEffectStarted == false then
+				glitchEffectStarted = true
+				-- this should fire only once
+				
+			end
 		end
 
 
@@ -168,6 +175,7 @@ end
 
 function love.load()
 	love.graphics.setBackgroundColor(200, 200, 200, 1)
+	love.window.setTitle(tostring(SCREEN_WIDTH) .. "x" .. tostring(SCREEN_HEIGHT) .. string.format(" world %d:%d name: %s", level_num, level_counter, levels.levelNames[level_num]))
 
 	-- load our backgrond image
 	background_image = love.graphics.newImage("assets/fruitgame_background.png")
@@ -210,7 +218,7 @@ function love.load()
     fruits = {}
 
     -- create 5 fruit objects
-	numOfFruit = 5
+	numOfFruit = levels[level_num][1] -- first level in world 1
     create_fruit(numOfFruit, fruitImages, imageFileNames)
 
 	-- create the level listener
@@ -259,11 +267,6 @@ function love.update(dt)
 	-- so the issue is fruit is zero
 	-- and we can
 
-
-	if numOfFruit == 0 then
-		--print("Fruit is 0!!!")
-	end
-
 	if numOfFruit == 0 and not levelCompleteTimerStarted then
 		levelCompleteTimerStarted = true
 		register_timer(3, function()
@@ -272,7 +275,7 @@ function love.update(dt)
 			newLevelArrowEffect()
 			print("we have passed the effect")
 
-			EventObj:Fire("LevelCompleted" .. tostring(level_counter))
+			EventObj:Fire("LevelCompleted" .. tostring(level_num) .. ":" .. tostring(level_counter))
 		end)
 	end
 
@@ -341,6 +344,10 @@ function love.keypressed(key)
 		move.left = true
 	elseif key == "right" then
 		move.right = true
+	elseif key == "a" then
+		move.left = true
+	elseif key == "d" then
+		move.right = true
 	elseif key == "escape" then
 		love.event.quit()
 	elseif key == "f1" then
@@ -353,6 +360,10 @@ end
 function love.keyreleased(key)
     if key == "left" then
 		move.left = false
+	elseif key == "a" then
+		move.left = false
+	elseif key == "d" then
+		move.right = false
 	elseif key == "right" then
 		move.right = false
 	else
@@ -377,8 +388,14 @@ function love.draw()
 		love.graphics.rectangle("fill", (SCREEN_HEIGHT/2), (SCREEN_HEIGHT/2)-25, 200, 100-25)
 		love.graphics.setColor(1, 1, 1, 1) -- reset color
 
-		love.graphics.setColor(0, 0, 0, 1)
+		if level_num == 1 then
+			love.graphics.setColor(0, 0, 0, 1)
+		else
+			love.graphics.setColor(200, 200, 200, 1)
+		end
+
 		love.graphics.printf("PAUSED", 0, SCREEN_HEIGHT/2, SCREEN_WIDTH, "center")
+		love.graphics.setColor(1, 1, 1, 1) -- reset color
 
 		
 		--return
