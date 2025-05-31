@@ -2,6 +2,7 @@ local string = require("string")
 local math = require("math")
 local os = require("os")
 
+local util = require("util")
 local event = require("event") -- our custom event handler
 local EventObj = event:New()
 
@@ -12,6 +13,7 @@ math.randomseed(os.time())
 
 local fruits = {}
 local fruitImages = nil
+local evilFruitImages = nil
 
 local pos = {x = 300, y = 490}
 local arrow_image = nil
@@ -22,6 +24,7 @@ local points = 0
 
 local level_counter = 1
 local level_num = 1
+local completedGame = false
 
 local spread_range = {X = {-200, 200}, Y = {-100, 100}}
 
@@ -47,31 +50,14 @@ local background_offset = {X = 0, Y = 0}
 local lastSpawnTime = math.huge
 
 local imageFileNames = nil
-
-
-function table_find(t, value)
-    for i, v in ipairs(t) do
-        if v == value then
-            return i
-        end
-    end
-    return nil
-end
-
-function math_clamp(_in, low, high)
-	return math.min(math.max( _in, low ), high)
-end
-
-function checkCollision(x1,y1,w1,h1, x2,y2,w2,h2)
-    return x1 < x2 + w2 and
-           x2 < x1 + w1 and
-           y1 < y2 + h2 and
-           y2 < y1 + h1
-end
+local evilFileNames = nil
 
 function create_fruit(amount, fruitImages, imageFileNames)
 	local sprX = spread_range.X
 	local sprY = spread_range.Y
+
+	local centerX = SCREEN_WIDTH / 2
+	local centerY = SCREEN_HEIGHT * 0.2
 
 	math.randomseed(os.time())
 	for i = 1, amount do
@@ -81,8 +67,9 @@ function create_fruit(amount, fruitImages, imageFileNames)
 		-- to solve the issue of fruit spawning off screen
 		-- clamping would bias the fruit to cluster together
 
-        local randX = math.random(SCREEN_WIDTH * 0.1, SCREEN_WIDTH * 0.6)
-        local randY = math.random(SCREEN_HEIGHT * 0.2, SCREEN_HEIGHT * 0.3)
+		-- spread on the middle per fruit to reduce clumping
+        local randX = centerX + math.random(sprX[1], sprX[2])
+        local randY = centerY + math.random(sprY[1], sprY[2])
 
         local fruitObject = {
             Texture = fruitImages[chosenFilename], 
@@ -119,10 +106,6 @@ end
 
 local glitchEffectStarted = false
 
-function load_map()
-
-end
-
 function gameLevelLogic()
 
 		while true do
@@ -132,8 +115,17 @@ function gameLevelLogic()
 
 			local currentLevel = levels[level_num]
 			-- if the level_counter is equal to the max increment the level_num
+
 			if #currentLevel == level_counter then
 				level_num = level_num + 1
+
+				if not levels[level_num] then
+					-- completed the game!
+					shouldShowArrows = false
+					completedGame = true
+					break
+				end
+
 				level_counter = 1
 				currentLevel = levels[level_num]
 				--load_map()
@@ -173,6 +165,40 @@ function gameLevelLogic()
 		-- print("Doing next")
 end
 
+
+function load_resources()
+
+	 -- table to store images by filename
+    fruitImages = {}
+	evilFruitImages = {}
+
+    local fruitImageFiles = love.filesystem.getDirectoryItems("assets/fruit_images")
+	local evilFruitFiles = love.filesystem.getDirectoryItems("assets/fruit_images/evil_fruits")
+
+	local imagesToLoad = util.table_concat(fruitImageFiles, evilFruitFiles)
+	-- PrintTable(imagesToLoad)
+
+    -- filter image files and load images
+    imageFileNames = {}  -- to hold just the valid filenames
+	evilFileNames = {}
+    for _, filename in ipairs(imagesToLoad) do
+		if filename:match("_evil%.png$") then
+			
+			local path = "assets/fruit_images/evil_fruits/" .. filename
+            evilFruitImages[filename] = love.graphics.newImage(path)
+            table.insert(evilFileNames, filename)
+
+		elseif filename:match("%.png$") or filename:match("%.jpg$") or filename:match("%.jpeg$") then
+            local path = "assets/fruit_images/" .. filename
+            fruitImages[filename] = love.graphics.newImage(path)
+            table.insert(imageFileNames, filename)
+        end
+    end
+
+    fruits = {}
+
+end
+
 function love.load()
 	love.graphics.setBackgroundColor(200, 200, 200, 1)
 	love.window.setTitle(tostring(SCREEN_WIDTH) .. "x" .. tostring(SCREEN_HEIGHT) .. string.format(" world %d:%d name: %s", level_num, level_counter, levels.levelNames[level_num]))
@@ -199,23 +225,8 @@ function love.load()
 	myFont = love.graphics.newFont(24)
     love.graphics.setFont(myFont)
 
-    -- table to store images by filename
-    fruitImages = {}
-
-    -- load all fruit images
-    local imageFiles = love.filesystem.getDirectoryItems("assets/fruit_images")
-
-    -- filter image files and load images
-    imageFileNames = {}  -- to hold just the valid filenames
-    for _, filename in ipairs(imageFiles) do
-        if filename:match("%.png$") or filename:match("%.jpg$") or filename:match("%.jpeg$") then
-            local path = "assets/fruit_images/" .. filename
-            fruitImages[filename] = love.graphics.newImage(path)
-            table.insert(imageFileNames, filename)  
-        end
-    end
-
-    fruits = {}
+	-- load resources
+	load_resources()
 
     -- create 5 fruit objects
 	numOfFruit = levels[level_num][1] -- first level in world 1
@@ -262,7 +273,7 @@ function newLevelArrowEffect()
 end
 
 function love.update(dt)
-	if PAUSED then return end
+	if PAUSED or completedGame then return end
 
 	-- so the issue is fruit is zero
 	-- and we can
@@ -319,7 +330,7 @@ function love.update(dt)
 	for i = #fruits, 1, -1 do
 		local fruit_obj = fruits[i]
 
-		if checkCollision(pos.x, pos.y + adjustedY,
+		if util.checkCollision(pos.x, pos.y + adjustedY,
 			basket_size.X, basket_size.Y - adjustedY,
 
 			fruit_obj.Position.X, fruit_obj.Position.Y,
@@ -352,6 +363,9 @@ function love.keypressed(key)
 		love.event.quit()
 	elseif key == "f1" then
 		PAUSED = not PAUSED
+	elseif key == "f2" then
+		-- debug mode
+		fruit_speed = 1200
 	else
 		--do nothing
 	end
@@ -374,6 +388,8 @@ end
 
 function love.draw()
 
+
+
 	-- -- load the background image
 	-- love.graphics.draw(background_image, 0, 0)
 	love.graphics.draw(background_image, 0, 0, 0,                             -- no rotation
@@ -382,7 +398,7 @@ function love.draw()
 	)
 
 
-	if PAUSED == true then
+	if PAUSED == true and not completedGame then
 		-- create paused bg
 		love.graphics.setColor(200, 200, 200, 1) -- red, semi-transparent
 		love.graphics.rectangle("fill", (SCREEN_HEIGHT/2), (SCREEN_HEIGHT/2)-25, 200, 100-25)
@@ -399,13 +415,34 @@ function love.draw()
 
 		
 		--return
+	elseif completedGame == true then
+		-- create paused bg
+		love.graphics.setColor(200, 200, 200, 1) -- red, semi-transparent
+		love.graphics.rectangle("fill", (SCREEN_HEIGHT/2), (SCREEN_HEIGHT/2)-25, 200, 100-25)
+		love.graphics.setColor(1, 1, 1, 1) -- reset color
+
+		love.graphics.setColor(0, 0, 0, 1)
+
+		if points <= 350 then
+			love.graphics.printf("YOU WON", 0, SCREEN_HEIGHT/2, SCREEN_WIDTH, "center")
+		else
+			love.graphics.printf("YOU LOST", 0, SCREEN_HEIGHT/2, SCREEN_WIDTH, "center")
+		end
+		love.graphics.setColor(1, 1, 1, 1) -- reset color
 	end
 
 	
-	love.graphics.setColor(0, 0, 0, 1)
+	if level_num == 2 then
+		love.graphics.setColor(200, 200, 200, 1)
+	else
+		love.graphics.setColor(0, 0, 0, 1)
+	end
+	
 	local points_str = string.format("Points: %d", points)
     love.graphics.printf(points_str, 0, 10, SCREEN_WIDTH, "left")
 	love.graphics.setColor(1, 1, 1, 1) -- reset color
+
+
     -- render our basket
     --love.graphics.print("|____________|", pos.x, pos.y)
 	love.graphics.draw(basket_image, pos.x, pos.y, 0, BASKET_SCALE, BASKET_SCALE)

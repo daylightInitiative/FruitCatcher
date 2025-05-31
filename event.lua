@@ -29,7 +29,7 @@ function Event:Fire(eventName, ...)
             local ok, error = coroutine.resume(co, ...)
 
             if not ok then
-                print("Coroutine error during thread wakeup:", err)
+                print("Coroutine error during thread wakeup:", error)
             end
         end
         --  clear waiting events after firing
